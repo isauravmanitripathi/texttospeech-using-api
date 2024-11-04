@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Response
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Response, BackgroundTasks
 from fastapi.responses import JSONResponse, StreamingResponse
 import httpx
 from sqlalchemy.orm import Session
@@ -15,6 +15,7 @@ import logging
 import b2sdk.v2 as b2
 from starlette.responses import RedirectResponse
 from dotenv import load_dotenv 
+from pathlib import Path
 
 # Initialize logging
 logging.basicConfig(level=logging.DEBUG)
@@ -24,8 +25,19 @@ models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
-# Load environment variables
-load_dotenv()
+# Get the directory containing your script
+BASE_DIR = Path(__file__).resolve().parent
+
+# Load .env file with explicit path
+load_dotenv(BASE_DIR / '.env')
+
+# Debug logging for environment variables
+logger.debug("------------ Environment Variables Debug ------------")
+logger.debug(f"ADMIN_ACCESS from env: {os.getenv('ADMIN_ACCESS')}")
+logger.debug(f"Current directory: {os.getcwd()}")
+logger.debug(f"Looking for .env file at: {BASE_DIR / '.env'}")
+logger.debug(f"Does .env file exist? {(BASE_DIR / '.env').exists()}")
+logger.debug("--------------------------------------------------")
 
 # Read from environment variables
 ADMIN_ACCESS = os.getenv("ADMIN_ACCESS")
@@ -42,6 +54,34 @@ def get_db():
         yield db
     finally:
         db.close()
+
+# List of available voices
+voices = [
+    ("en-US-EricNeural", "American English - Male (Eric)"),
+    ("en-US-ChristopherNeural", "American English - Male (Christopher)"),
+    ("en-US-GuyNeural", "American Guy Multiple Speech"),
+    ("en-GB-ThomasNeural", "British English - Male (Thomas)"),
+    ("en-IN-PrabhatNeural", "Indian English - Male (Prabhat)"),
+    ("en-IN-NeerjaNeural", "Indian English - Female (Neerja)"),
+    ("hi-IN-MadhurNeural", "Hindi - Male (Madhur)"),
+    ("hi-IN-SwaraNeural", "Hindi - Female (Swara)"),
+    ("bn-IN-BashkarNeural", "Bengali - Male (Bashkar)"),
+    ("bn-IN-TanishaaNeural", "Bengali - Female (Tanishaa)"),
+    ("gu-IN-NiranjanNeural", "Gujarati - Male (Niranjan)"),
+    ("gu-IN-DhwaniNeural", "Gujarati - Female (Dhwani)"),
+    ("ta-IN-ValluvarNeural", "Tamil - Male (Valluvar)"),
+    ("ta-IN-PallaviNeural", "Tamil - Female (Pallavi)"),
+    ("te-IN-MohanNeural", "Telugu - Male (Mohan)"),
+    ("te-IN-ShrutiNeural", "Telugu - Female (Shruti)"),
+    ("es-ES-AlvaroNeural", "Spanish (Spain) - Male (Alvaro)"),
+    ("fr-FR-HenriNeural", "French - Male (Henri)"),
+    ("de-DE-KillianNeural", "German - Male (Killian)"),
+    ("zh-CN-YunxiNeural", "Chinese (Mandarin) - Male (Yunxi)"),
+    ("en-US-JennyNeural", "American English - Female (Jenny)")
+]
+
+# Create voice map
+voice_map = {voice[0]: voice[1] for voice in voices}
 
 async def text_to_speech(text, voice):
     communicate = edge_tts.Communicate(text, voice)
@@ -63,21 +103,19 @@ def get_current_user(api_key: str = Depends(api_key_header), db: Session = Depen
         raise HTTPException(status_code=401, detail="Invalid API key")
     return user
 
-# List of available voices
-voices = [
-    ("en-US-EricNeural", "American English - Male (Eric)"),
-    # Add other voices as needed
-]
-
-voice_map = {voice[0]: voice[1] for voice in voices}
-
 @app.get("/voices")
 def get_voices():
     return JSONResponse(content={"voices": voices})
 
 @app.post("/admin/create_api_key")
 def create_api_key(admin_access: str = Form(...), db: Session = Depends(get_db)):
+    logger.debug(f"Received admin_access: {admin_access}")
+    logger.debug(f"Expected admin_access: {ADMIN_ACCESS}")
+    logger.debug(f"Type of received: {type(admin_access)}")
+    logger.debug(f"Type of expected: {type(ADMIN_ACCESS)}")
+    
     if admin_access != ADMIN_ACCESS:
+        logger.debug("Access keys don't match!")
         raise HTTPException(status_code=403, detail="Invalid admin access key")
     new_api_key = utils.generate_api_key()
     user = crud.create_user(db, api_key=new_api_key)
@@ -256,6 +294,26 @@ def delete_project(uuid: str, current_user: models.User = Depends(get_current_us
         raise HTTPException(status_code=500, detail="Failed to delete project")
     return {"detail": "Project deleted"}
 
+@app.post("/admin/reset_database")
+def reset_database(admin_access: str = Form(...)):
+    if admin_access != ADMIN_ACCESS:
+        raise HTTPException(status_code=403, detail="Invalid admin access key")
+
+    db_path = "sqlite3.db"  # Specify the path to your SQLite database file here
+
+    # Delete the database file
+    if os.path.exists(db_path):
+        os.remove(db_path)
+        logger.info("Database file deleted successfully.")
+    else:
+        raise HTTPException(status_code=404, detail="Database file not found")
+
+    # Recreate the tables
+    models.Base.metadata.create_all(bind=engine)
+    logger.info("Database recreated successfully.")
+
+    return {"detail": "Database reset successfully"}
+
 async def process_project(project_id: int):
     db = SessionLocal()
     try:
@@ -294,11 +352,7 @@ async def process_project(project_id: int):
         try:
             info = b2.InMemoryAccountInfo()
             b2_api = b2.B2Api(info)
-            
-            # Make sure to use the correct key ID format
             key_id = f"00{B2_KEY_ID}" if not B2_KEY_ID.startswith('00') else B2_KEY_ID
-            logger.debug(f"Using key ID: {key_id}")
-            
             b2_api.authorize_account("production", key_id, B2_APPLICATION_KEY)
             b2_bucket = b2_api.get_bucket_by_name(B2_BUCKET_NAME)
         except b2.exception.B2Error as e:
