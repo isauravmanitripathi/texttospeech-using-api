@@ -16,7 +16,49 @@ This program is a FastAPI-based web service that converts text to speech using M
 
 ### 1. Install Dependencies
 ```bash
-pip install fastapi uvicorn python-multipart sqlalchemy edge-tts b2sdk httpx python-dotenv
+pip install -r requirements.txt
+```
+
+```bash
+aiofiles==24.1.0
+aiohappyeyeballs==2.4.3
+aiohttp==3.10.10
+aiosignal==1.3.1
+annotated-types==0.7.0
+anyio==4.6.2.post1
+attrs==24.2.0
+b2sdk==2.6.0
+boto3==1.35.54
+botocore==1.35.54
+certifi==2024.8.30
+charset-normalizer==3.4.0
+click==8.1.7
+edge-tts==6.1.15
+fastapi==0.115.4
+frozenlist==1.5.0
+h11==0.14.0
+httpcore==1.0.6
+httpx==0.27.2
+idna==3.10
+jmespath==1.0.1
+logfury==1.0.1
+multidict==6.1.0
+propcache==0.2.0
+pydantic==2.9.2
+pydantic_core==2.23.4
+python-dateutil==2.9.0.post0
+python-dotenv==1.0.1
+python-multipart==0.0.17
+requests==2.32.3
+s3transfer==0.10.3
+six==1.16.0
+sniffio==1.3.1
+SQLAlchemy==2.0.36
+starlette==0.41.2
+typing_extensions==4.12.2
+urllib3==2.2.3
+uvicorn==0.32.0
+yarl==1.17.1
 ```
 
 ### 2. Environment Configuration
