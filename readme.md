@@ -14,6 +14,76 @@ This program is a FastAPI-based web service that converts text to speech using M
 
 ## Setup
 
+Here’s a step-by-step guide in markdown format to create, build, install, and start the library:
+
+---
+
+# Setting Up and Running the `tts-api` Library
+
+Follow these steps to clone, configure, build, and run the `tts-api` library.
+
+### 1. Clone the Repository
+
+First, clone the repository to your local machine:
+
+```bash
+git clone https://github.com/isauravmanitripathi/texttospeech-using-api.git
+cd tts-api
+```
+
+### 2. Create and Configure the `.env` File
+
+In the project’s root directory, create a `.env` file and add the necessary environment variables:
+
+```plaintext
+ADMIN_ACCESS=your_admin_access_key
+B2_KEY_ID=your_backblaze_key_id
+B2_APPLICATION_KEY=your_backblaze_application_key
+B2_BUCKET_NAME=your_backblaze_bucket_name
+```
+
+Replace the placeholder values with your actual credentials.
+
+### 3. Remove Old Builds (if any)
+
+Before building the library, remove any old build files to avoid conflicts:
+
+```bash
+rm -rf build/ dist/ tts_api.egg-info/
+```
+
+### 4. Build the Library
+
+Now, use the following command to create the source distribution (`sdist`) and wheel distribution (`bdist_wheel`):
+
+```bash
+python setup.py sdist bdist_wheel
+```
+
+After running this command, you should see the build files in the `dist/` directory.
+
+### 5. Install the Library
+
+Once the package is built, you can install it locally using:
+
+```bash
+pip install .
+```
+
+### 6. Start the FastAPI Application
+
+With the package installed, you can start the FastAPI application using the following command:
+
+```bash
+tts-api
+```
+
+The API will now be running at `http://127.0.0.1:8000`.
+
+--- 
+
+Follow these steps, and your `tts-api` library should be up and running!
+
 ### 1. Install Dependencies
 ```bash
 pip install -r requirements.txt
