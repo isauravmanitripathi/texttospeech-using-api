@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+edge_tts
+sqlalchemy
+python-dotenv
+aiofiles
+python-multipart
+boto3
