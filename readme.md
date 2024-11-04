@@ -1,149 +1,217 @@
-# API Endpoints Documentation
+# Text-to-Speech API with Backblaze Storage
 
-## Admin Endpoints
+## Overview
+This program is a FastAPI-based web service that converts text to speech using Microsoft Edge's TTS engine and stores both the text and audio files in Backblaze B2 cloud storage. It supports user authentication via API keys and provides various endpoints for managing text-to-speech conversions.
 
-### Create API Key
+## Features
+- Text to Speech conversion
+- File upload support (txt files)
+- Secure storage in Backblaze B2
+- API key authentication
+- Date-based file organization
+- Direct and redirect download options
+- Project status tracking
+
+## Setup
+
+### 1. Install Dependencies
+```bash
+pip install fastapi uvicorn python-multipart sqlalchemy edge-tts b2sdk httpx python-dotenv
+```
+
+### 2. Environment Configuration
+Create a `.env` file in your project root with the following content:
+```env
+ADMIN_ACCESS=your_admin_access_key
+B2_KEY_ID=your_backblaze_key_id
+B2_APPLICATION_KEY=your_backblaze_application_key
+B2_BUCKET_NAME=your_bucket_name
+```
+
+### 3. Reset Database
+To start fresh:
+1. Stop the server if it's running
+2. Delete the existing database:
+```bash
+rm sql_app.db  # Or whatever your database filename is
+```
+3. Restart the server - it will create a new database automatically:
+```bash
+uvicorn main:app --reload
+```
+
+## API Usage
+
+### 1. Admin Operations
+
+#### Create API Key
 ```bash
 curl -X POST http://127.0.0.1:8000/admin/create_api_key \
-  -F "admin_access=your-admin-access-key"
+  -F "admin_access=your_admin_access_key"
 ```
 Response:
 ```json
 {
-  "api_key": "generated-api-key"
+  "api_key": "generated_api_key"
 }
 ```
 
-### Delete API Key
+#### Delete API Key
 ```bash
 curl -X POST http://127.0.0.1:8000/admin/delete_api_key \
-  -F "admin_access=your-admin-access-key" \
-  -F "api_key_to_delete=key-to-delete"
-```
-Response:
-```json
-{
-  "detail": "API key deleted"
-}
+  -F "admin_access=your_admin_access_key" \
+  -F "api_key_to_delete=key_to_delete"
 ```
 
-## Project Endpoints
+### 2. Project Operations
 
-### Get Available Voices
+#### List Available Voices
 ```bash
 curl -X GET http://127.0.0.1:8000/voices
 ```
-Response:
-```json
-{
-  "voices": [
-    ["en-US-EricNeural", "American English - Male (Eric)"]
-  ]
-}
-```
 
-### Create Project with Text
+#### Create New Project (Text Input)
 ```bash
 curl -X POST http://127.0.0.1:8000/projects/ \
-  -H "api_key: 3329ad25f0af871903c31411dccc5fe3" \
+  -H "api_key: your_api_key" \
   -F "voice=en-US-EricNeural" \
   -F "text=Hello, this is a test."
 ```
-Response:
-```json
-{
-  "uuid": "project-uuid",
-  "status": "processing"
-}
-```
 
-### Create Project with Text File
+#### Create New Project (File Input)
 ```bash
 curl -X POST http://127.0.0.1:8000/projects/ \
-  -H "api_key: your-api-key" \
+  -H "api_key: your_api_key" \
   -F "voice=en-US-EricNeural" \
   -F "file=@/path/to/your/file.txt"
 ```
-Response:
-```json
-{
-  "uuid": "project-uuid",
-  "status": "processing"
-}
-```
 
-### Check Project Status
+#### Check Project Status
 ```bash
 curl -X GET http://127.0.0.1:8000/projects/{uuid}/status \
-  -H "api_key: your-api-key"
-```
-Response:
-```json
-{
-  "uuid": "project-uuid",
-  "status": "completed"  # or "processing", "failed"
-}
+  -H "api_key: your_api_key"
 ```
 
-### Get Project Download URL
+#### Get Project URLs
 ```bash
-curl -X GET http://127.0.0.1:8000/projects/{uuid}/download \
-  -H "api_key: your-api-key"
-```
-Response:
-```json
-{
-  "download_url": "https://..."
-}
+curl -X GET http://127.0.0.1:8000/projects/{uuid}/url \
+  -H "api_key: your_api_key"
 ```
 
-### Delete Project
+#### Download Audio File
+```bash
+# Direct download (through server)
+curl -X GET "http://127.0.0.1:8000/projects/{uuid}/download?direct=true" \
+  -H "api_key: your_api_key" \
+  --output audio.mp3
+
+# Redirect download (direct from Backblaze)
+curl -X GET "http://127.0.0.1:8000/projects/{uuid}/download" \
+  -H "api_key: your_api_key" \
+  -L --output audio.mp3
+```
+
+#### Download Text File
+```bash
+# Direct download
+curl -X GET "http://127.0.0.1:8000/projects/{uuid}/download/text?direct=true" \
+  -H "api_key: your_api_key" \
+  --output text.txt
+
+# Redirect download
+curl -X GET "http://127.0.0.1:8000/projects/{uuid}/download/text" \
+  -H "api_key: your_api_key" \
+  -L --output text.txt
+```
+
+#### Delete Project
 ```bash
 curl -X DELETE http://127.0.0.1:8000/projects/{uuid} \
-  -H "api_key: your-api-key"
-```
-Response:
-```json
-{
-  "detail": "Project deleted"
-}
+  -H "api_key: your_api_key"
 ```
 
-## Example Workflow
+## Working with Environment Variables
 
-1. First, create an API key:
+### Updating Your Keys
+1. Stop the server
+2. Edit your `.env` file with new values:
+```env
+# Admin access key for creating API keys
+ADMIN_ACCESS=your_new_admin_key
+
+# Backblaze B2 credentials
+B2_KEY_ID=your_new_b2_key_id
+B2_APPLICATION_KEY=your_new_b2_application_key
+B2_BUCKET_NAME=your_new_bucket_name
+```
+3. Restart the server
+
+### Getting Backblaze Credentials
+1. Log into your Backblaze account
+2. Go to App Keys or Account > App Keys
+3. Create a new application key
+4. Note down:
+   - Application Key ID (B2_KEY_ID)
+   - Application Key (B2_APPLICATION_KEY)
+   - Bucket name (B2_BUCKET_NAME)
+
+## Database Management
+
+### Reset Database
+If you need to start fresh:
+```bash
+# Stop the server
+ctrl+c
+
+# Delete the database
+rm sql_app.db
+
+# Restart the server (creates new database)
+uvicorn main:app --reload
+```
+
+### Database Location
+- The default SQLite database is created as `sql_app.db` in your project directory
+- A new database is automatically created if it doesn't exist when you start the server
+
+## Common Operations
+
+### Complete Reset
+To completely reset your application:
+1. Stop the server
+2. Delete the database: `rm sql_app.db`
+3. Update `.env` file if needed
+4. Restart server: `uvicorn main:app --reload`
+5. Create new API key using admin access
+6. Start using new API key for operations
+
+### Testing Setup
+1. Create API key:
 ```bash
 curl -X POST http://127.0.0.1:8000/admin/create_api_key \
-  -F "admin_access=your-admin-access-key"
+  -F "admin_access=your_admin_access_key"
 ```
-
-2. Create a new project with some text:
+2. Test voices endpoint:
+```bash
+curl -X GET http://127.0.0.1:8000/voices
+```
+3. Create test project:
 ```bash
 curl -X POST http://127.0.0.1:8000/projects/ \
-  -H "api_key: your-new-api-key" \
+  -H "api_key: your_new_api_key" \
   -F "voice=en-US-EricNeural" \
-  -F "text=Hello, this is a test of the text to speech system."
+  -F "text=This is a test of the text to speech system."
 ```
 
-3. Check the project status using the UUID from step 2:
-```bash
-curl -X GET http://127.0.0.1:8000/projects/your-uuid/status \
-  -H "api_key: your-new-api-key"
-```
+## Error Handling
+- Missing API key: 400 Bad Request
+- Invalid API key: 401 Unauthorized
+- Invalid admin access: 403 Forbidden
+- Project not found: 404 Not Found
+- Upload/download failures: 500 Internal Server Error
 
-4. Once status is "completed", get the download URL:
-```bash
-curl -X GET http://127.0.0.1:8000/projects/your-uuid/download \
-  -H "api_key: your-new-api-key"
-```
-
-5. Download the file using the URL from the response:
-```bash
-curl -o output.mp3 "download-url-from-response"
-```
-
-Note: Replace placeholders like:
-- `your-admin-access-key` with your actual admin access key
-- `your-api-key` with the API key you received
-- `your-uuid` with the actual UUID received from create project
-- `project-uuid` with actual project UUID
+## Security Notes
+- Keep your `.env` file secure and never commit it to version control
+- Regularly rotate your API keys
+- Use HTTPS in production
+- Monitor your Backblaze usage and costs
