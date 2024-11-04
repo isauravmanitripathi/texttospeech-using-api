@@ -1,6 +1,5 @@
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Response, BackgroundTasks
-from fastapi.responses import JSONResponse, StreamingResponse
-import httpx
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Response
+from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
 import models, crud, utils
 from database import SessionLocal, engine
@@ -13,9 +12,9 @@ import edge_tts
 import datetime
 import logging
 import b2sdk.v2 as b2
-from starlette.responses import RedirectResponse
-from dotenv import load_dotenv 
+from dotenv import load_dotenv
 from pathlib import Path
+import httpx
 
 # Initialize logging
 logging.basicConfig(level=logging.DEBUG)
@@ -56,28 +55,29 @@ def get_db():
         db.close()
 
 # List of available voices
+# List of available voices
 voices = [
-    ("en-US-EricNeural", "American English - Male (Eric)"),
-    ("en-US-ChristopherNeural", "American English - Male (Christopher)"),
-    ("en-US-GuyNeural", "American Guy Multiple Speech"),
-    ("en-GB-ThomasNeural", "British English - Male (Thomas)"),
-    ("en-IN-PrabhatNeural", "Indian English - Male (Prabhat)"),
-    ("en-IN-NeerjaNeural", "Indian English - Female (Neerja)"),
-    ("hi-IN-MadhurNeural", "Hindi - Male (Madhur)"),
-    ("hi-IN-SwaraNeural", "Hindi - Female (Swara)"),
-    ("bn-IN-BashkarNeural", "Bengali - Male (Bashkar)"),
-    ("bn-IN-TanishaaNeural", "Bengali - Female (Tanishaa)"),
-    ("gu-IN-NiranjanNeural", "Gujarati - Male (Niranjan)"),
-    ("gu-IN-DhwaniNeural", "Gujarati - Female (Dhwani)"),
-    ("ta-IN-ValluvarNeural", "Tamil - Male (Valluvar)"),
-    ("ta-IN-PallaviNeural", "Tamil - Female (Pallavi)"),
-    ("te-IN-MohanNeural", "Telugu - Male (Mohan)"),
-    ("te-IN-ShrutiNeural", "Telugu - Female (Shruti)"),
-    ("es-ES-AlvaroNeural", "Spanish (Spain) - Male (Alvaro)"),
-    ("fr-FR-HenriNeural", "French - Male (Henri)"),
-    ("de-DE-KillianNeural", "German - Male (Killian)"),
-    ("zh-CN-YunxiNeural", "Chinese (Mandarin) - Male (Yunxi)"),
-    ("en-US-JennyNeural", "American English - Female (Jenny)")
+	("en-US-EricNeural", "American English - Male (Eric)"),
+	("en-US-ChristopherNeural", "American English - Male (Christopher)"),
+	("en-US-GuyNeural", "American Guy Multiple Speech"),
+	("en-GB-ThomasNeural", "British English - Male (Thomas)"),
+	("en-IN-PrabhatNeural", "Indian English - Male (Prabhat)"),
+	("en-IN-NeerjaNeural", "Indian English - Female (Neerja)"),
+	("hi-IN-MadhurNeural", "Hindi - Male (Madhur)"),
+	("hi-IN-SwaraNeural", "Hindi - Female (Swara)"),
+	("bn-IN-BashkarNeural", "Bengali - Male (Bashkar)"),
+	("bn-IN-TanishaaNeural", "Bengali - Female (Tanishaa)"),
+	("gu-IN-NiranjanNeural", "Gujarati - Male (Niranjan)"),
+	("gu-IN-DhwaniNeural", "Gujarati - Female (Dhwani)"),
+	("ta-IN-ValluvarNeural", "Tamil - Male (Valluvar)"),
+	("ta-IN-PallaviNeural", "Tamil - Female (Pallavi)"),
+	("te-IN-MohanNeural", "Telugu - Male (Mohan)"),
+	("te-IN-ShrutiNeural", "Telugu - Female (Shruti)"),
+	("es-ES-AlvaroNeural", "Spanish (Spain) - Male (Alvaro)"),
+	("fr-FR-HenriNeural", "French - Male (Henri)"),
+	("de-DE-KillianNeural", "German - Male (Killian)"),
+	("zh-CN-YunxiNeural", "Chinese (Mandarin) - Male (Yunxi)"),
+	("en-US-JennyNeural", "American English - Female (Jenny)")
 ]
 
 # Create voice map
@@ -102,6 +102,9 @@ def get_current_user(api_key: str = Depends(api_key_header), db: Session = Depen
     if not user:
         raise HTTPException(status_code=401, detail="Invalid API key")
     return user
+
+# Initialize processing flag
+processing = False
 
 @app.get("/voices")
 def get_voices():
@@ -131,8 +134,13 @@ def delete_api_key(admin_access: str = Form(...), api_key_to_delete: str = Form(
     return {"detail": "API key deleted"}
 
 @app.post("/projects/")
-async def create_project(voice: str = Form(...), file: UploadFile = File(None), text: str = Form(None), 
-                         current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+async def create_project(
+    voice: str = Form(...),
+    file: UploadFile = File(None),
+    text: str = Form(None), 
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     if voice not in voice_map:
         raise HTTPException(status_code=400, detail="Invalid voice selection")
 
@@ -158,10 +166,55 @@ async def create_project(voice: str = Form(...), file: UploadFile = File(None), 
         original_filename=original_filename
     )
 
-    # Start background processing
-    asyncio.create_task(process_project(project.id))
+    # Add project to queue
+    added_to_queue = crud.add_project_to_queue(db, project.id)
+    if not added_to_queue:
+        # Queue is full
+        project.status = "rejected"
+        db.commit()
+        raise HTTPException(status_code=429, detail="Queue is full. Please try again later.")
+
+    db.commit()
+
+    # Start processing if not already running
+    if not processing:
+        asyncio.create_task(process_queue())
 
     return {"uuid": project.uuid, "status": project.status}
+
+@app.get("/queue")
+def view_queue(current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """View the current queue for the user."""
+    user_queue = crud.get_user_queue(db, current_user.id)
+    return {"queue": user_queue}
+
+@app.delete("/queue/{project_uuid}")
+def delete_from_queue(project_uuid: str, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Remove a project from the queue by UUID."""
+    # Find the project
+    project = crud.get_project_by_uuid(db, uuid=project_uuid)
+    if not project or project.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Project not found")
+    removed = crud.remove_project_from_queue(db, project.id)
+    if removed:
+        project.status = "deleted"
+        db.commit()
+        return {"detail": f"Project {project_uuid} removed from queue."}
+    else:
+        raise HTTPException(status_code=404, detail="Project not found in queue")
+
+@app.post("/queue/{project_uuid}/move_to_top")
+def move_to_top(project_uuid: str, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Move a project to the top of the queue."""
+    # Find the project
+    project = crud.get_project_by_uuid(db, uuid=project_uuid)
+    if not project or project.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Project not found")
+    moved = crud.move_project_to_top(db, project.id)
+    if moved:
+        return {"detail": f"Project {project_uuid} moved to the top of the queue."}
+    else:
+        raise HTTPException(status_code=404, detail="Project not found in queue")
 
 @app.get("/projects/{uuid}/status")
 def check_project_status(uuid: str, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -314,6 +367,27 @@ def reset_database(admin_access: str = Form(...)):
 
     return {"detail": "Database reset successfully"}
 
+async def process_queue():
+    global processing
+    processing = True
+    db = SessionLocal()
+    try:
+        while True:
+            project_id = crud.get_next_project_in_queue(db)
+            if project_id is None:
+                break  # No more projects in queue
+            # Update project status to 'processing'
+            project = db.query(models.Project).filter(models.Project.id == project_id).first()
+            if project:
+                project.status = "processing"
+                db.commit()
+                # Remove from queue
+                crud.remove_project_from_queue(db, project_id)
+                await process_project(project_id)
+    finally:
+        processing = False
+        db.close()
+
 async def process_project(project_id: int):
     db = SessionLocal()
     try:
@@ -353,6 +427,7 @@ async def process_project(project_id: int):
             info = b2.InMemoryAccountInfo()
             b2_api = b2.B2Api(info)
             key_id = f"00{B2_KEY_ID}" if not B2_KEY_ID.startswith('00') else B2_KEY_ID
+            logger.debug(f"Using key ID: {key_id}")
             b2_api.authorize_account("production", key_id, B2_APPLICATION_KEY)
             b2_bucket = b2_api.get_bucket_by_name(B2_BUCKET_NAME)
         except b2.exception.B2Error as e:
@@ -375,7 +450,7 @@ async def process_project(project_id: int):
             # Generate download URL
             txt_download_url = b2_bucket.get_download_url(txt_key)
             project.b2_txt_download_url = txt_download_url
-            
+
             logger.info(f"Text file uploaded successfully: {txt_download_url}")
         except Exception as e:
             project.status = "failed"
@@ -396,7 +471,7 @@ async def process_project(project_id: int):
             # Generate download URL
             audio_download_url = b2_bucket.get_download_url(mp3_key)
             project.b2_audio_download_url = audio_download_url
-            
+
             logger.info(f"Audio file uploaded successfully: {audio_download_url}")
 
             project.status = "completed"

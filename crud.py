@@ -1,3 +1,5 @@
+# crud.py
+
 from sqlalchemy.orm import Session
 import models
 import uuid
@@ -29,7 +31,7 @@ def create_project(db: Session, user_id: int, voice: str, text: str, original_fi
         voice=voice,
         text=text,
         original_filename=original_filename,
-        status="processing"
+        status="queued"
     )
     db.add(db_project)
     db.commit()
@@ -57,3 +59,57 @@ def delete_project(db: Session, project_id: int):
         db.commit()
         return True
     return False
+
+def add_project_to_queue(db: Session, project_id: int):
+    max_queue_size = 15
+    queue_count = db.query(models.Queue).count()
+    if queue_count >= max_queue_size:
+        return False  # Queue is full
+
+    # Find the maximum position in the queue
+    max_position_entry = db.query(models.Queue).order_by(models.Queue.position.desc()).first()
+    next_position = (max_position_entry.position + 1) if max_position_entry else 1
+
+    queue_entry = models.Queue(
+        project_id=project_id,
+        position=next_position
+    )
+    db.add(queue_entry)
+    db.commit()
+    return True
+
+def remove_project_from_queue(db: Session, project_id: int):
+    queue_entry = db.query(models.Queue).filter(models.Queue.project_id == project_id).first()
+    if queue_entry:
+        db.delete(queue_entry)
+        db.commit()
+        # Reorder positions
+        reorder_queue_positions(db)
+        return True
+    return False
+
+def move_project_to_top(db: Session, project_id: int):
+    queue_entry = db.query(models.Queue).filter(models.Queue.project_id == project_id).first()
+    if queue_entry:
+        # Update positions of other entries
+        db.query(models.Queue).filter(models.Queue.position < queue_entry.position).update({models.Queue.position: models.Queue.position + 1})
+        queue_entry.position = 1
+        db.commit()
+        return True
+    return False
+
+def get_next_project_in_queue(db: Session):
+    queue_entry = db.query(models.Queue).order_by(models.Queue.position).first()
+    if queue_entry:
+        return queue_entry.project_id
+    return None
+
+def get_user_queue(db: Session, user_id: int):
+    queue_entries = db.query(models.Queue).join(models.Project).filter(models.Project.user_id == user_id).order_by(models.Queue.position).all()
+    return [entry.project.uuid for entry in queue_entries]
+
+def reorder_queue_positions(db: Session):
+    queue_entries = db.query(models.Queue).order_by(models.Queue.position).all()
+    for index, entry in enumerate(queue_entries, start=1):
+        entry.position = index
+    db.commit()
