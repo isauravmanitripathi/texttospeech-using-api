@@ -82,95 +82,285 @@ rm sql_app.db  # Or whatever your database filename is
 uvicorn main:app --reload
 ```
 
-## API Usage
+## API Endpoints
 
-### 1. Admin Operations
+### Admin Endpoints
 
-#### Create API Key
+#### 1. Create API Key (Admin Only)
+
+Generates a new API key for a user.
+
 ```bash
-curl -X POST http://127.0.0.1:8000/admin/create_api_key \
-  -F "admin_access=your_admin_access_key"
-```
-Response:
-```json
-{
-  "api_key": "generated_api_key"
-}
+curl -X POST "http://127.0.0.1:8000/admin/create_api_key" \
+    -F "admin_access=<ADMIN_ACCESS>"
 ```
 
-#### Delete API Key
+- **Method**: `POST`
+- **URL**: `/admin/create_api_key`
+- **Form Data**:
+  - `admin_access`: Your admin access key.
+- **Response**:
+  - `api_key`: The newly generated API key.
+
+#### 2. Delete API Key (Admin Only)
+
+Deletes an existing API key.
+
 ```bash
-curl -X POST http://127.0.0.1:8000/admin/delete_api_key \
-  -F "admin_access=your_admin_access_key" \
-  -F "api_key_to_delete=key_to_delete"
+curl -X POST "http://127.0.0.1:8000/admin/delete_api_key" \
+    -F "admin_access=<ADMIN_ACCESS>" \
+    -F "api_key_to_delete=<API_KEY_TO_DELETE>"
 ```
 
-### 2. Project Operations
+- **Method**: `POST`
+- **URL**: `/admin/delete_api_key`
+- **Form Data**:
+  - `admin_access`: Your admin access key.
+  - `api_key_to_delete`: The API key you want to delete.
+- **Response**:
+  - `detail`: Confirmation message.
 
-#### List Available Voices
+#### 3. Reset Database (Admin Only)
+
+Deletes the existing database and recreates it.
+
 ```bash
-curl -X GET http://127.0.0.1:8000/voices
+curl -X POST "http://127.0.0.1:8000/admin/reset_database" \
+    -F "admin_access=<ADMIN_ACCESS>"
 ```
 
-#### Create New Project (Text Input)
+- **Method**: `POST`
+- **URL**: `/admin/reset_database`
+- **Form Data**:
+  - `admin_access`: Your admin access key.
+- **Response**:
+  - `detail`: Confirmation message.
+
+### User Endpoints
+
+#### 1. Get Available Voices
+
+Retrieves the list of available voices for text-to-speech conversion.
+
 ```bash
-curl -X POST http://127.0.0.1:8000/projects/ \
-  -H "api_key: your_api_key" \
-  -F "voice=en-US-EricNeural" \
-  -F "text=Hello, this is a test."
+curl -X GET "http://127.0.0.1:8000/voices"
 ```
 
-#### Create New Project (File Input)
+- **Method**: `GET`
+- **URL**: `/voices`
+- **Response**:
+  - `voices`: An array of available voices.
+
+#### 2. Create a New Project
+
+Creates a new text-to-speech project using either text input or a `.txt` file.
+
+**Using Text Input**:
+
 ```bash
-curl -X POST http://127.0.0.1:8000/projects/ \
-  -H "api_key: your_api_key" \
-  -F "voice=en-US-EricNeural" \
-  -F "file=@/path/to/your/file.txt"
+curl -X POST "http://127.0.0.1:8000/projects/" \
+    -F "voice=en-US-JennyNeural" \
+    -F "text=Hello, this is a test with Jenny's voice." \
+    -H "api_key: <API_KEY>"
 ```
 
-#### Check Project Status
+**Using a File**:
+
 ```bash
-curl -X GET http://127.0.0.1:8000/projects/{uuid}/status \
-  -H "api_key: your_api_key"
+curl -X POST "http://127.0.0.1:8000/projects/" \
+    -F "voice=en-US-JennyNeural" \
+    -F "file=@/path/to/yourfile.txt" \
+    -H "api_key: <API_KEY>"
 ```
 
-#### Get Project URLs
+- **Method**: `POST`
+- **URL**: `/projects/`
+- **Headers**:
+  - `api_key`: Your API key.
+- **Form Data**:
+  - `voice`: The voice to use for conversion.
+  - `text`: The text to convert (if not using a file).
+  - `file`: A `.txt` file containing the text to convert (if not using `text`).
+- **Response**:
+  - `uuid`: The unique identifier for the project.
+  - `status`: The current status of the project.
+
+#### 3. View the Queue
+
+Retrieves the list of your projects currently in the queue.
+
 ```bash
-curl -X GET http://127.0.0.1:8000/projects/{uuid}/url \
-  -H "api_key: your_api_key"
+curl -X GET "http://127.0.0.1:8000/queue" \
+    -H "api_key: <API_KEY>"
 ```
 
-#### Download Audio File
+- **Method**: `GET`
+- **URL**: `/queue`
+- **Headers**:
+  - `api_key`: Your API key.
+- **Response**:
+  - `queue`: An array of project UUIDs in your queue.
+
+#### 4. Delete a Project from the Queue
+
+Removes a specific project from the queue using its UUID.
+
 ```bash
-# Direct download (through server)
-curl -X GET "http://127.0.0.1:8000/projects/{uuid}/download?direct=true" \
-  -H "api_key: your_api_key" \
-  --output audio.mp3
-
-# Redirect download (direct from Backblaze)
-curl -X GET "http://127.0.0.1:8000/projects/{uuid}/download" \
-  -H "api_key: your_api_key" \
-  -L --output audio.mp3
+curl -X DELETE "http://127.0.0.1:8000/queue/<PROJECT_UUID>" \
+    -H "api_key: <API_KEY>"
 ```
 
-#### Download Text File
+- **Method**: `DELETE`
+- **URL**: `/queue/<PROJECT_UUID>`
+- **Headers**:
+  - `api_key`: Your API key.
+- **Response**:
+  - `detail`: Confirmation message.
+
+#### 5. Move a Project to the Top of the Queue
+
+Moves a specific project to the front of the queue.
+
 ```bash
-# Direct download
-curl -X GET "http://127.0.0.1:8000/projects/{uuid}/download/text?direct=true" \
-  -H "api_key: your_api_key" \
-  --output text.txt
-
-# Redirect download
-curl -X GET "http://127.0.0.1:8000/projects/{uuid}/download/text" \
-  -H "api_key: your_api_key" \
-  -L --output text.txt
+curl -X POST "http://127.0.0.1:8000/queue/<PROJECT_UUID>/move_to_top" \
+    -H "api_key: <API_KEY>"
 ```
 
-#### Delete Project
+- **Method**: `POST`
+- **URL**: `/queue/<PROJECT_UUID>/move_to_top`
+- **Headers**:
+  - `api_key`: Your API key.
+- **Response**:
+  - `detail`: Confirmation message.
+
+#### 6. Check Project Status
+
+Checks the status of a project by its UUID.
+
 ```bash
-curl -X DELETE http://127.0.0.1:8000/projects/{uuid} \
-  -H "api_key: your_api_key"
+curl -X GET "http://127.0.0.1:8000/projects/<PROJECT_UUID>/status" \
+    -H "api_key: <API_KEY>"
 ```
+
+- **Method**: `GET`
+- **URL**: `/projects/<PROJECT_UUID>/status`
+- **Headers**:
+  - `api_key`: Your API key.
+- **Response**:
+  - `uuid`: Project UUID.
+  - `status`: Current status (`queued`, `processing`, `completed`, etc.).
+  - `created_at`: Creation timestamp.
+  - `updated_at`: Last update timestamp.
+  - `voice`: Voice used.
+  - `original_filename`: Original filename if a file was used.
+
+#### 7. Get Project URL
+
+Retrieves the download URLs for the audio and text files if the project is completed.
+
+```bash
+curl -X GET "http://127.0.0.1:8000/projects/<PROJECT_UUID>/url" \
+    -H "api_key: <API_KEY>"
+```
+
+- **Method**: `GET`
+- **URL**: `/projects/<PROJECT_UUID>/url`
+- **Headers**:
+  - `api_key`: Your API key.
+- **Response**:
+  - `audio_url`: URL to download the audio file.
+  - `text_url`: URL to download the text file.
+
+#### 8. Download Project Audio
+
+Downloads the audio file for the project. If you want to download directly through the server, set `direct=true`.
+
+```bash
+curl -X GET "http://127.0.0.1:8000/projects/<PROJECT_UUID>/download?direct=true" \
+    -H "api_key: <API_KEY>" -o "output.mp3"
+```
+
+- **Method**: `GET`
+- **URL**: `/projects/<PROJECT_UUID>/download`
+- **Headers**:
+  - `api_key`: Your API key.
+- **Query Parameters**:
+  - `direct`: Set to `true` to download directly through the server.
+- **Response**:
+  - Returns the audio file.
+
+#### 9. Download Project Text File
+
+Downloads the text file for the project. Set `direct=true` to download directly through the server.
+
+```bash
+curl -X GET "http://127.0.0.1:8000/projects/<PROJECT_UUID>/download/text?direct=true" \
+    -H "api_key: <API_KEY>" -o "output.txt"
+```
+
+- **Method**: `GET`
+- **URL**: `/projects/<PROJECT_UUID>/download/text`
+- **Headers**:
+  - `api_key`: Your API key.
+- **Query Parameters**:
+  - `direct`: Set to `true` to download directly through the server.
+- **Response**:
+  - Returns the text file.
+
+#### 10. Delete a Project
+
+Deletes an existing project by its UUID.
+
+```bash
+curl -X DELETE "http://127.0.0.1:8000/projects/<PROJECT_UUID>" \
+    -H "api_key: <API_KEY>"
+```
+
+- **Method**: `DELETE`
+- **URL**: `/projects/<PROJECT_UUID>`
+- **Headers**:
+  - `api_key`: Your API key.
+- **Response**:
+  - `detail`: Confirmation message.
+
+---
+
+## Notes
+
+- **Placeholders**: Replace placeholders like `<ADMIN_ACCESS>`, `<API_KEY>`, `<PROJECT_UUID>`, and `/path/to/yourfile.txt` with actual values.
+- **API Key**: You must include your API key in the header for endpoints that require authentication.
+- **Admin Access**: Admin endpoints require the `admin_access` key, which is defined in your `.env` file.
+- **Queue Limit**: The processing queue has a maximum limit of 15 projects. If the queue is full, new projects will be rejected.
+- **Project Statuses**:
+  - `queued`: Project is waiting in the queue.
+  - `processing`: Project is currently being processed.
+  - `completed`: Project has been processed successfully.
+  - `failed`: An error occurred during processing.
+  - `deleted`: Project was removed from the queue before processing.
+  - `rejected`: Project was rejected due to the queue being full.
+
+---
+
+## Examples
+
+### Creating a Project with Text Input
+
+```bash
+curl -X POST "http://127.0.0.1:8000/projects/" \
+    -F "voice=en-US-EricNeural" \
+    -F "text=This is a sample text for conversion." \
+    -H "api_key: your_api_key_here"
+```
+
+### Creating a Project with a File
+
+```bash
+curl -X POST "http://127.0.0.1:8000/projects/" \
+    -F "voice=en-US-EricNeural" \
+    -F "file=@/Users/username/Documents/sample.txt" \
+    -H "api_key: your_api_key_here"
+```
+
 
 ## Working with Environment Variables
 
