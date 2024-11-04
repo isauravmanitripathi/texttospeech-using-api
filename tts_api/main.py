@@ -1,8 +1,8 @@
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Response
 from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
-import models, crud, utils
-from database import SessionLocal, engine
+from . import models, crud, utils
+from .database import SessionLocal, engine
 from fastapi.security import APIKeyHeader
 from typing import Optional
 import os
@@ -28,6 +28,7 @@ app = FastAPI()
 BASE_DIR = Path(__file__).resolve().parent
 
 # Load .env file with explicit path
+BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / '.env')
 
 # Debug logging for environment variables
@@ -486,6 +487,9 @@ async def process_project(project_id: int):
     finally:
         db.close()
 
-if __name__ == "__main__":
+
+def main():
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    uvicorn.run("tts_api.main:app", host="127.0.0.1", port=8000, reload=True)
+
+

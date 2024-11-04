@@ -1,7 +1,7 @@
 # crud.py
 
 from sqlalchemy.orm import Session
-import models
+from . import models
 import uuid
 import datetime
 
