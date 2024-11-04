@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+sqlalchemy
+edge-tts
+b2sdk
+httpx
+python-dotenv
